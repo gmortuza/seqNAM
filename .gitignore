@@ -1,0 +1,3 @@
+*.fastq
+*.db
+.ipynb_checkpoints

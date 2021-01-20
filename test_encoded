@@ -1,0 +1,1 @@
+-f test -l 36 --delta 0.05 --c_dist 0.1 --rs 4 --map original_map.txt --alpha 0.1 --out test_encoded --job_id  -n 143 -p 28 --seed_size 4
