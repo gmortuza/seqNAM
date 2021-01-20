@@ -106,7 +106,7 @@ def create_table():
     	gt_including_primer INTEGER DEFAULT -1,
     	gt_pc INTEGER DEFAULT -1,
     	gt_pl INTEGER DEFAULT -1,
-    	probable_gt INTEGER DEFAULT -1,
+    	probable_gt INTEGER DEFAULT 0,
     	probable_err INTEGER DEFAULT -1,
     	probable_err_in_primer INTEGER DEFAULT -1,
     	probable_err_pos TEXT DEFAULT '',
@@ -148,9 +148,23 @@ def insert_ground_truth(file):
 
 
 # Create table
-create_table()
+# create_table()
 # Populate ground truth sequences
-insert_ground_truth("gt_sequences.csv")
+# insert_ground_truth("gt_sequences.csv")
+
+# store ground truth information into hashtable to reduce database query
+def get_ground_truth():
+    cursor.execute("SELECT id, sequence_without_primer, sequence_with_primer FROM gt_sequences")
+    results = cursor.fetchall()
+    without_primer = {}
+    with_primer = {}
+    for result in results:
+        without_primer[result[1]] = result[0]  # seq: id
+        with_primer[result[2]] = result[0]  # seq: id
+    return with_primer, without_primer
+
+
+gt_seq_with_primer, gt_seq_without_primer = get_ground_truth()
 
 
 # insert fastq file content
@@ -181,14 +195,13 @@ def insert_wetlab_data(file, read=1):
             }
             # This is a new sequence that we need to analyze
             # we will search this sequences in gt_sequences
-            cursor.execute(f"SELECT id FROM gt_sequences WHERE sequence_with_primer='{seq}'")
-            matched_seq = cursor.fetchall()
-            if matched_seq:
+            gt_id = gt_seq_with_primer.get(seq, -1)
+            if gt_id:
                 # Insert this sequence this doesn't have any error
-                values['gt_including_primer'] = matched_seq[0][0]
-                values['gt_pc'] = matched_seq[0][0]
-                values['gt_pl'] = matched_seq[0][0]
-                values['probable_gt'] = matched_seq[0][0]
+                values['gt_including_primer'] = gt_id
+                values['gt_pc'] = gt_id
+                values['gt_pl'] = gt_id
+                values['probable_gt'] = gt_id
                 values['probable_err'] = 0
                 values['probable_err_in_primer'] = 0
                 values['probable_err_pos'] = ''
@@ -197,23 +210,19 @@ def insert_wetlab_data(file, read=1):
 
                 # check by removing the primer based on length
                 # check if this sequence exists
-                cursor.execute(f"SELECT id FROM gt_sequences WHERE sequence_without_primer="
-                               f"'{get_core_seq(seq, based_on_primer_length=True)}'")
-                matched_seq_length = cursor.fetchall()
-                if matched_seq_length:
+                gt_id_length = gt_seq_without_primer.get(get_core_seq(seq, based_on_primer_length=True), -1)
+                if gt_id_length:
                     # sequence exists
-                    values['gt_pl'] = matched_seq_length[0][0]
-                    values['probable_gt'] = matched_seq_length[0][0]
+                    values['gt_pl'] = gt_id_length
+                    values['probable_gt'] = gt_id_length
                 else:
                     values['gt_pl'] = -1
 
-                cursor.execute(f"SELECT id FROM gt_sequences WHERE sequence_without_primer="
-                               f"'{get_core_seq(seq, based_on_primer_length=False)}'")
-                matched_seq_content = cursor.fetchall()
-                if matched_seq_content:
+                gt_id_content = gt_seq_without_primer.get(get_core_seq((seq), based_on_primer_length=False), -1)
+                if gt_id_content:
                     # sequence exists
-                    values['gt_pc'] = matched_seq_content[0][0]
-                    values['probable_gt'] = matched_seq_content[0][0]
+                    values['gt_pc'] = gt_id_content
+                    values['probable_gt'] = gt_id_content
                 else:
                     values['gt_pc'] = -1
                 # the first parameter of get_edit_distance method is (id, seq)
@@ -221,7 +230,7 @@ def insert_wetlab_data(file, read=1):
                 _, values['probable_err_in_primer'] = get_edit_distance((-1, "ACATCCAACACTCTACGCCCGAATAGGAGCCGCAACACAC"), seq[:20] + seq[-20:])
                 # if we didn't find the sequence now need to perform exhaustive search on all the sequences
                 # to get the minimum edit distance sequences
-                if not matched_seq_content and not matched_seq_length:
+                if not gt_id_content and not gt_id_length:
                     # Minimum edit distance sequence
                     sequence_id, probable_error_pos, edit_distance = search_sequences(seq)
                     values["probable_gt"] = sequence_id
