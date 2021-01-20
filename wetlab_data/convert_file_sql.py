@@ -8,6 +8,7 @@ from collections import defaultdict
 import pickle
 
 connection = sl.connect("sequences.db")
+cursor = connection.cursor()
 
 
 def round_nearest_10(number):
@@ -80,7 +81,7 @@ def get_core_seq(seq, forward_primer="ACATCCAACACTCTACGCCC", backward_primer="GA
         return seq
 
 
-def create_table(con):
+def create_table():
     # Create table if not exists
     # length --> length of the sequence with primer
     # r1_count --> # times this sequence appeared in read 1
@@ -112,9 +113,9 @@ def create_table(con):
     	sequence TEXT NOT NULL UNIQUE 
     );
     """
-    con.execute(command)
+    connection.execute(command)
     # create that unique index
-    con.execute("CREATE UNIQUE INDEX IF NOT EXISTS sequences_id_uindex on sequences (id);")
+    connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS sequences_id_uindex on sequences (id);")
 
     # create table for ground truth sequences
     command = """
@@ -125,15 +126,13 @@ def create_table(con):
         sequence_without_primer TEXT NOT NULL UNIQUE
     );
     """
-    con.execute(command)
+    connection.execute(command)
     # create unique index
-    con.execute("CREATE UNIQUE INDEX IF NOT EXISTS gt_sequences_id_uindex on gt_sequences (id);")
+    connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS gt_sequences_id_uindex on gt_sequences (id);")
 
 
 # insert the data fro ground truth
-
-
-def insert_ground_truth(con, file):
+def insert_ground_truth(file):
     with open(file, "r") as csv_file:
         # first line is header
         next(csv_file)
@@ -143,19 +142,19 @@ def insert_ground_truth(con, file):
             # insert these line into the database
             command = f"INSERT INTO gt_sequences (sequence_with_primer, sequence_without_primer) VALUES " \
                       f"('{seq_with_primer}', '{seq_without_primer}')"
-            con.execute(command)
+            connection.execute(command)
         # save the database in disk
-        con.commit()
+        connection.commit()
 
 
-insert_ground_truth(connection, "seqNAM-wetlab.jpg-96.csv")
-
-create_table(connection)
+# Create table
+create_table()
+# Populate ground truth sequences
+insert_ground_truth("gt_sequences.csv")
 
 
 # insert fastq file content
-def insert_wetlab_data(con, file, read=1):
-    cursor = con.cursor()
+def insert_wetlab_data(file, read=1):
     for seq_record in SeqIO.parse(file, "fastq"):
         seq = str(seq_record.seq)
         # if sequences already exists then update it's count only.
@@ -172,7 +171,7 @@ def insert_wetlab_data(con, file, read=1):
                 # increment count for read 2
                 cursor.execute(
                     f"UPDATE sequences SET r2_count = {existing_seq[0][3] + 1} WHERE id={existing_seq[0][0]}")
-            con.commit()
+            connection.commit()
         else:
             values = {
                 'length': len(seq),
@@ -304,8 +303,8 @@ def get_edit_distance(gt_sequence_with_id_: str, sequence) -> int:
     return gt_sequence_with_id_[0], dp[m][n]
 
 
-insert_wetlab_data(connection, "seqNAM01_R1_001.fastq", 1)
+insert_wetlab_data("seqNAM01_R1_001.fastq", 1)
 
-insert_wetlab_data(connection, "seqNAM01_R2_001.fastq", 2)
+insert_wetlab_data("seqNAM01_R2_001.fastq", 2)
 
 connection.close()
