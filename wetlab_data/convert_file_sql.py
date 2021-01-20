@@ -148,9 +148,10 @@ def insert_ground_truth(file):
 
 
 # Create table
-# create_table()
+create_table()
 # Populate ground truth sequences
-# insert_ground_truth("gt_sequences.csv")
+insert_ground_truth("gt_sequences.csv")
+
 
 # store ground truth information into hashtable to reduce database query
 def get_ground_truth():
@@ -169,6 +170,7 @@ gt_seq_with_primer, gt_seq_without_primer = get_ground_truth()
 
 # insert fastq file content
 def insert_wetlab_data(file, read=1):
+    inserted_so_far = 1
     for seq_record in SeqIO.parse(file, "fastq"):
         seq = str(seq_record.seq)
         # if sequences already exists then update it's count only.
@@ -185,7 +187,6 @@ def insert_wetlab_data(file, read=1):
                 # increment count for read 2
                 cursor.execute(
                     f"UPDATE sequences SET r2_count = {existing_seq[0][3] + 1} WHERE id={existing_seq[0][0]}")
-            connection.commit()
         else:
             values = {
                 'length': len(seq),
@@ -205,6 +206,10 @@ def insert_wetlab_data(file, read=1):
                 values['probable_err'] = 0
                 values['probable_err_in_primer'] = 0
                 values['probable_err_pos'] = ''
+                cmd = f"INSERT INTO sequences (length, r1_count, r2_count, gt_including_primer, gt_pc, gt_pl, probable_gt, " \
+                      f"probable_err, probable_err_in_primer, probable_err_pos, sequence) VALUES (:length, :r1_count, :r2_count, " \
+                      f":gt_including_primer, :gt_pc,:gt_pl, :probable_gt, :probable_err, :probable_err_in_primer, " \
+                      f":probable_err_pos, :sequence)"
             else:
                 values['gt_including_primer'] = -1  # sequence didn't match
 
@@ -218,41 +223,45 @@ def insert_wetlab_data(file, read=1):
                 else:
                     values['gt_pl'] = -1
 
-                gt_id_content = gt_seq_without_primer.get(get_core_seq((seq), based_on_primer_length=False), -1)
+                gt_id_content = gt_seq_without_primer.get(get_core_seq(seq, based_on_primer_length=False), -1)
                 if gt_id_content:
                     # sequence exists
                     values['gt_pc'] = gt_id_content
                     values['probable_gt'] = gt_id_content
                 else:
                     values['gt_pc'] = -1
-                # the first parameter of get_edit_distance method is (id, seq)
-                # we don't require any id in the primer so we are passing -1
-                _, values['probable_err_in_primer'] = get_edit_distance((-1, "ACATCCAACACTCTACGCCCGAATAGGAGCCGCAACACAC"), seq[:20] + seq[-20:])
-                # if we didn't find the sequence now need to perform exhaustive search on all the sequences
-                # to get the minimum edit distance sequences
-                if not gt_id_content and not gt_id_length:
-                    # Minimum edit distance sequence
-                    sequence_id, probable_error_pos, edit_distance = search_sequences(seq)
-                    values["probable_gt"] = sequence_id
-                    values["probable_err"] = edit_distance
-                    values["probable_err_pos"] = probable_error_pos
-                else:
-                    # we found this array either in excluding primer match that means all the error is in the priemer
-                    values["probable_err"] = values['probable_err_in_primer']
-                    values["probable_err_pos"] = ""
-            cmd = f"INSERT INTO sequences (length, r1_count, r2_count, gt_including_primer, gt_pc, gt_pl, probable_gt, " \
-                  f"probable_err, probable_err_in_primer, probable_err_pos, sequence) VALUES (:length, :r1_count, :r2_count, " \
-                  f":gt_including_primer, :gt_pc,:gt_pl, :probable_gt, :probable_err, :probable_err_in_primer, " \
-                  f":probable_err_pos, :sequence)"
+
+                cmd = f"INSERT INTO sequences (length, r1_count, r2_count, gt_including_primer, gt_pc, gt_pl, " \
+                      f"sequence) VALUES (:length, :r1_count, :r2_count, :gt_including_primer, :gt_pc,:gt_pl, :sequence)"
             cursor.execute(cmd, values)
+        # Don't commit to the database offen
+        # Commit to the database after handling 10,000 sequences
+        if inserted_so_far % 10000 == 0:
+            print(f"Read: {read}: sequence inserted: {inserted_so_far}")
             connection.commit()
-        # TODO: Find ground truth based on whole sequences. If the sequences is intact or not
-        # TODO: Check the ground truth by removing primer based on length
-        # TODO: check the ground truth by removing primer based on content
-        # TODO: Find probable ground truth
 
 
 def analyze_wetlab_data():
+    # the first parameter of get_edit_distance method is (id, seq)
+    # we don't require any id in the primer so we are passing -1
+    # TODO: add this in analyzing sequence part
+    # _, values['probable_err_in_primer'] = get_edit_distance((-1, "ACATCCAACACTCTACGCCCGAATAGGAGCCGCAACACAC"), seq[:20] + seq[-20:])
+    # if we didn't find the sequence now need to perform exhaustive search on all the sequences
+    # to get the minimum edit distance sequences
+    # if not gt_id_content and not gt_id_length:
+    #     # Minimum edit distance sequence
+    #     sequence_id, probable_error_pos, edit_distance = search_sequences(seq)
+    #     values["probable_gt"] = sequence_id
+    #     values["probable_err"] = edit_distance
+    #     values["probable_err_pos"] = probable_error_pos
+    # else:
+    #     # we found this array either in excluding primer match that means all the error is in the priemer
+    #     values["probable_err"] = values['probable_err_in_primer']
+    #     values["probable_err_pos"] = ""
+    #     cmd = f"INSERT INTO sequences (length, r1_count, r2_count, gt_including_primer, gt_pc, gt_pl, probable_gt, " \
+    #           f"probable_err, probable_err_in_primer, probable_err_pos, sequence) VALUES (:length, :r1_count, :r2_count, " \
+    #           f":gt_including_primer, :gt_pc,:gt_pl, :probable_gt, :probable_err, :probable_err_in_primer, " \
+    #           f":probable_err_pos, :sequence)"
     pass
 
 
