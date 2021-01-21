@@ -9,6 +9,10 @@ import pickle
 
 connection = sl.connect("sequences.db")
 cursor = connection.cursor()
+# during searching the edit distance we don't need to calculate all the edit distance
+min_edit_distance_all_thread = 99999
+# there is only one variable that can have race condition so we can use a global lock for that
+lock = multiprocessing.Manager().Lock()
 
 
 def round_nearest_10(number):
@@ -148,9 +152,9 @@ def insert_ground_truth(file):
 
 
 # Create table
-create_table()
+# create_table()
 # Populate ground truth sequences
-insert_ground_truth("gt_sequences.csv")
+# insert_ground_truth("gt_sequences.csv")
 
 
 # store ground truth information into hashtable to reduce database query
@@ -241,35 +245,37 @@ def insert_wetlab_data(file, read=1):
 
 
 def analyze_wetlab_data():
-    # the first parameter of get_edit_distance method is (id, seq)
-    # we don't require any id in the primer so we are passing -1
-    # TODO: add this in analyzing sequence part
-    # _, values['probable_err_in_primer'] = get_edit_distance((-1, "ACATCCAACACTCTACGCCCGAATAGGAGCCGCAACACAC"), seq[:20] + seq[-20:])
-    # if we didn't find the sequence now need to perform exhaustive search on all the sequences
-    # to get the minimum edit distance sequences
-    # if not gt_id_content and not gt_id_length:
-    #     # Minimum edit distance sequence
-    #     sequence_id, probable_error_pos, edit_distance = search_sequences(seq)
-    #     values["probable_gt"] = sequence_id
-    #     values["probable_err"] = edit_distance
-    #     values["probable_err_pos"] = probable_error_pos
-    # else:
-    #     # we found this array either in excluding primer match that means all the error is in the priemer
-    #     values["probable_err"] = values['probable_err_in_primer']
-    #     values["probable_err_pos"] = ""
-    #     cmd = f"INSERT INTO sequences (length, r1_count, r2_count, gt_including_primer, gt_pc, gt_pl, probable_gt, " \
-    #           f"probable_err, probable_err_in_primer, probable_err_pos, sequence) VALUES (:length, :r1_count, :r2_count, " \
-    #           f":gt_including_primer, :gt_pc,:gt_pl, :probable_gt, :probable_err, :probable_err_in_primer, " \
-    #           f":probable_err_pos, :sequence)"
-    pass
+    cursor.execute("SELECT id, sequence FROM sequences WHERE probable_gt==-1 ORDER BY r1_count+r2_count DESC LIMIT 10")
+    results = cursor.fetchall()
+    for i, (sequence_id, sequence) in enumerate(results):
+        values = {}
+        # the first parameter of get_edit_distance method is (id, seq)
+        # we don't require any id in the primer so we are passing -1
+        _, probable_err_in_primer = get_edit_distance((-1, "ACATCCAACACTCTACGCCCGAATAGGAGCCGCAACACAC"), sequence[:20] + sequence[-20:])
+        global min_edit_distance_all_thread
+        min_edit_distance_all_thread = 9999
+        probable_gt, probable_err_pos, probable_err = search_sequences(sequence)
+        cmd = f""" UPDATE sequences
+        SET
+           probable_err_in_primer = {probable_err_in_primer},
+           probable_gt = {probable_gt},
+           probable_err = {probable_err},
+           probable_err_pos = "{probable_err_pos}"
+        WHERE id = {sequence_id}"""
+        cursor.execute(cmd)
+        print(cmd)
+        # Commit 0n every 1,000 sequences
+        if not i % 1000:
+            # TODO Enable this later
+            # connection.commit()
+            print(f"Sequence processed: {i}")
 
 
 def search_sequences(sequence):
 
     if len(sequence) < 220:
         return -1, "", -1  # consider this sequence as garbage
-    cursor = connection.cursor()
-    cursor.execute("SELECT id, sequence_without_primer FROM gt_sequences")
+    cursor.execute("SELECT id, sequence_with_primer FROM gt_sequences")
     gt_sequences = cursor.fetchall()
     # gt_id, pgt_sequence, min_edit_distance = -1, "", float('inf')
     p_get_edit_distance = partial(get_edit_distance, sequence=sequence)
@@ -283,20 +289,13 @@ def search_sequences(sequence):
     # TODO: implement this
     probable_error_pos = ""
     return edit_distances[0][0], probable_error_pos, edit_distances[0][1]
-    # for id_, gt_sequence in gt_sequences:
-    #     edit_distance = get_edit_distance(sequence, gt_sequence)
-    #     if edit_distance < min_edit_distance:
-    #         min_edit_distance = edit_distance
-    #         gt_id = id_
-    #     if min_edit_distance == 1:
-    #         break
-    # Find probable error position
-    # TODO: implement this
-    # probable_error_pos = ""
-    # return gt_id, probable_error_pos, min_edit_distance
 
 
 def get_edit_distance(gt_sequence_with_id_: str, sequence) -> int:
+    global min_edit_distance_all_thread
+    if min_edit_distance_all_thread < 10:  # If any one of the thread got error less than 10 then we will consider that
+        # as correct
+        return gt_sequence_with_id_[0], 999
     gt_sequence = gt_sequence_with_id_[1]
     delta = lambda i, j: 1 if sequence[i] != gt_sequence[j] else 0
     n = len(gt_sequence)
@@ -308,20 +307,32 @@ def get_edit_distance(gt_sequence_with_id_: str, sequence) -> int:
 
     for j in range(1, n + 1):
         dp[0][j] = j
-
+    # Find the minimum of current row and previous row.
+    # we are taking the minimum of from previous row and previous column
+    # so if the minimum is greater than
     for i in range(1, m + 1):
+        min_ = float('inf')
         for j in range(1, n + 1):
             dp[i][j] = min(
                 dp[i - 1][j - 1] + delta(i - 1, j - 1),
                 dp[i - 1][j] + 1,
                 dp[i][j - 1] + 1,
             )  # align, delete, insert respectively
+            min_ = min(dp[i][j], min_)
+        if min_ > min_edit_distance_all_thread:
+            return gt_sequence_with_id_[0], 999
 
+    lock.acquire()
+    min_edit_distance_all_thread = min(min_edit_distance_all_thread, dp[m][n])
+    lock.release()
     return gt_sequence_with_id_[0], dp[m][n]
 
 
-insert_wetlab_data("seqNAM01_R1_001.fastq", 1)
+# insert_wetlab_data("seqNAM01_R1_001.fastq", 1)
 
-insert_wetlab_data("seqNAM01_R2_001.fastq", 2)
+# insert_wetlab_data("seqNAM01_R2_001.fastq", 2)
+
+# ANALYZE data
+analyze_wetlab_data()
 
 connection.close()
