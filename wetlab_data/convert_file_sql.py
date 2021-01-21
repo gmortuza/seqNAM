@@ -170,8 +170,7 @@ gt_seq_with_primer, gt_seq_without_primer = get_ground_truth()
 
 # insert fastq file content
 def insert_wetlab_data(file, read=1):
-    inserted_so_far = 1
-    for seq_record in SeqIO.parse(file, "fastq"):
+    for inserted_so_far, seq_record in enumerate(SeqIO.parse(file, "fastq")):
         seq = str(seq_record.seq)
         # if sequences already exists then update it's count only.
         # as we have already analyzed this sequence
@@ -236,7 +235,7 @@ def insert_wetlab_data(file, read=1):
             cursor.execute(cmd, values)
         # Don't commit to the database offen
         # Commit to the database after handling 10,000 sequences
-        if inserted_so_far % 10000 == 0:
+        if inserted_so_far % 100000 == 0:
             print(f"Read: {read}: sequence inserted: {inserted_so_far}")
             connection.commit()
 
