@@ -1,3 +1,5 @@
 *.fastq
 *.db
 .ipynb_checkpoints
+__pycache__
+random*

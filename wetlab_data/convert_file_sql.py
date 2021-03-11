@@ -9,6 +9,10 @@ import pickle
 
 connection = sl.connect("sequences.db")
 cursor = connection.cursor()
+
+# Existing database connection
+existing_connection = sl.connect("sequences_1.db")
+existing_cursor = existing_connection.cursor()
 # during searching the edit distance we don't need to calculate all the edit distance
 min_edit_distance_all_thread = 99999
 # there is only one variable that can have race condition so we can use a global lock for that
@@ -75,10 +79,10 @@ def get_core_seq(seq, forward_primer="ACATCCAACACTCTACGCCC", backward_primer="GA
         # the last 5 parts of our primer is CGCCC so if we find this element in the sequences that means that's the end
         # of the primer
         try:
-            first_primer_end_index = seq.index("CCC") + 3
+            first_primer_end_index = seq.index("CGCCC") + 5
             seq = seq[first_primer_end_index:]
             # remove the last primer
-            backward_primer_begin_index = seq.rindex("GAAT")
+            backward_primer_begin_index = seq.rindex("GAATT")
             seq = seq[:backward_primer_begin_index]
         except ValueError:
             return -1
@@ -171,11 +175,19 @@ def get_ground_truth():
 
 gt_seq_with_primer, gt_seq_without_primer = get_ground_truth()
 
+# This will be required for analyzing the sequences
+gt_seq_with_primer_tuple = [(v, k) for k, v in gt_seq_with_primer.items()]
+
 
 # insert fastq file content
 def insert_wetlab_data(file, read=1):
     for inserted_so_far, seq_record in enumerate(SeqIO.parse(file, "fastq")):
-        seq = str(seq_record.seq)
+        if read == 2:
+            # Take the reverse complement of the sequences
+            seq = seq_record.seq.reverse_complement()
+        else:
+            seq = seq_record.seq
+        seq = str(seq)
         # if sequences already exists then update it's count only.
         # as we have already analyzed this sequence
         cursor.execute(f"SELECT * FROM sequences WHERE sequence='{seq}'")
@@ -245,43 +257,49 @@ def insert_wetlab_data(file, read=1):
 
 
 def analyze_wetlab_data():
-    cursor.execute("SELECT id, sequence FROM sequences WHERE probable_gt==-1 ORDER BY r1_count+r2_count DESC LIMIT 10")
-    results = cursor.fetchall()
-    for i, (sequence_id, sequence) in enumerate(results):
-        values = {}
-        # the first parameter of get_edit_distance method is (id, seq)
-        # we don't require any id in the primer so we are passing -1
-        _, probable_err_in_primer = get_edit_distance((-1, "ACATCCAACACTCTACGCCCGAATAGGAGCCGCAACACAC"), sequence[:20] + sequence[-20:])
-        global min_edit_distance_all_thread
-        min_edit_distance_all_thread = 9999
-        probable_gt, probable_err_pos, probable_err = search_sequences(sequence)
-        cmd = f""" UPDATE sequences
-        SET
-           probable_err_in_primer = {probable_err_in_primer},
-           probable_gt = {probable_gt},
-           probable_err = {probable_err},
-           probable_err_pos = "{probable_err_pos}"
-        WHERE id = {sequence_id}"""
-        cursor.execute(cmd)
-        print(cmd)
-        # Commit 0n every 1,000 sequences
-        if not i % 1000:
-            # TODO Enable this later
-            # connection.commit()
-            print(f"Sequence processed: {i}")
+    while True:
+        cursor.execute("SELECT id, sequence FROM sequences WHERE probable_gt==-1 ORDER BY r1_count+r2_count DESC "
+                       "LIMIT 10000")
+        results = cursor.fetchall()
+        if not results:
+            return
+        for i, (sequence_id, sequence) in enumerate(results):
+            values = {}
+            # the first parameter of get_edit_distance method is (id, seq)
+            # we don't require any id in the primer so we are passing -1
+            _, probable_err_in_primer = get_edit_distance((-1, "ACATCCAACACTCTACGCCCGAATAGGAGCCGCAACACAC"), sequence[:20] + sequence[-20:])
+            global min_edit_distance_all_thread
+            min_edit_distance_all_thread = 9999
+            probable_gt, probable_err_pos, probable_err = search_sequences(sequence)
+            cmd = f""" UPDATE sequences
+            SET
+               probable_err_in_primer = {probable_err_in_primer},
+               probable_gt = {probable_gt},
+               probable_err = {probable_err},
+               probable_err_pos = "{probable_err_pos}"
+            WHERE id = {sequence_id}"""
+            cursor.execute(cmd)
+            # Commit 0n every 1,000 sequences
+            if not i % 1000:
+                # TODO Enable this later
+                connection.commit()
+                print(f"Sequence processed: {i}")
 
 
 def search_sequences(sequence):
-
+    # sequence already exists in the previous calculated database then get that from there
+    cmd = f"SELECT probable_gt, probable_err_pos, probable_err FROM sequences WHERE sequence='{sequence}' " \
+          f"and probable_gt > 0"
+    existing_cursor.execute(cmd)
+    result = existing_cursor.fetchall()
+    if result:
+        return result[0]
     if len(sequence) < 220:
         return -1, "", -1  # consider this sequence as garbage
-    cursor.execute("SELECT id, sequence_with_primer FROM gt_sequences")
-    gt_sequences = cursor.fetchall()
-    # gt_id, pgt_sequence, min_edit_distance = -1, "", float('inf')
     p_get_edit_distance = partial(get_edit_distance, sequence=sequence)
     optimum_number_of_process = int(math.ceil(multiprocessing.cpu_count()))
     pool = multiprocessing.Pool(processes=optimum_number_of_process)
-    edit_distances = pool.map(p_get_edit_distance, gt_sequences)
+    edit_distances = pool.map(p_get_edit_distance, gt_seq_with_primer_tuple)
     pool.close()
     pool.join()
     # sort the edit distance
@@ -336,3 +354,4 @@ def get_edit_distance(gt_sequence_with_id_: str, sequence) -> int:
 analyze_wetlab_data()
 
 connection.close()
+existing_connection.close()

@@ -154,8 +154,6 @@ def main(args):
             cell_columns = 24
         else:
             cell_columns = 48
-
-
     elif args.output_format == "sequence_only":
         out.write("sequence\n")
 
