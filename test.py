@@ -75,7 +75,7 @@ for file_size in file_sizes:
     encoding_args.seed_size = 4
     encoding_args.config_file = False
     encoding_args.output_format = "sequence_only"
-    encoding_args.verbose = 1
+    encoding_args.verbose = 0
 
     encoding_starting_time = time.time()
     encoding_info = encode.main(encoding_args)
@@ -95,9 +95,12 @@ for file_size in file_sizes:
         # Don't need to run this test as it was already ran in previous test
         if previous_result > current_number_of_result:
             continue
-        degrade = Degrade(encoding_info['args'], deletion=random.choice(deletion),
-                          insertion=random.choice(insertion), mutation=random.choice(mutation),
-                          start_end_con=random.choice([1, 0]))
+        if i == 0:
+            degrade = Degrade(encoding_info['args'], deletion=0, insertion=0, mutation=0, start_end_con=1)
+        else:
+            degrade = Degrade(encoding_info['args'], deletion=random.choice(deletion),
+                              insertion=random.choice(insertion), mutation=random.choice(mutation),
+                              start_end_con=random.choice([1, 0]))
         degrade_details = degrade.degrade_file(file_in=output_file_name, file_out=degraded_file_name)
 
         decoding_starting_time = time.time()
@@ -108,7 +111,7 @@ for file_size in file_sizes:
         output_args.no_correction = False
         output_args.file_in = degraded_file_name
         output_args.out = after_decode_file_name
-        output_args.verbose = 1
+        output_args.verbose = 0
 
         output_args.size = 16
         output_args.map = 'original_map.txt'
