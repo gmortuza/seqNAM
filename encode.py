@@ -66,6 +66,7 @@ def read_args():
     parser.add_argument('--output_format', help="Details of the encoding or only sequences. Available options: "
                                                 "sequence_only, sequence_with_details", type=str,
                         default="sequence_details")
+    parser.add_argument("--ensure_decode_ability", help="This will ensure that encoded file is decodeable", action="store_true")
     parser.add_argument("--verbose", help="Write details on the console", type=int, default=1)
 
     args = parser.parse_args()
@@ -100,9 +101,8 @@ def main(args):
                     args=args)
 
     # Decoder
-    p = Pool(num_seg,
-             mapping=read_map,
-             args=args)
+    if args.ensure_decode_ability:
+        p = Pool(num_seg, mapping=read_map, args=args)
 
     logger.info("Upper bounds on packets for decoding is %d (x%f)  with %f probability\n",
                  int(json.loads(f.PRNG.debug())['K_prime']), json.loads(f.PRNG.debug())['Z'],
@@ -209,9 +209,12 @@ def main(args):
             elif args.output_format == "sequence_only":
                 out.write(f"{primer_sequence}\n")
 
-            p.add_dna(d.get_DNA_strand())
+            if args.ensure_decode_ability:
+                p.add_dna(d.get_DNA_strand())
 
-            if p.is_done():
+                if p.is_done():
+                    f.count_redundancy()
+            elif f.good >= num_seg:
                 f.count_redundancy()
 
             if d.seed in used_seeds:

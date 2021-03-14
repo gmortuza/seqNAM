@@ -62,7 +62,7 @@ for file_size in file_sizes:
     encoding_args.delta = .001
     encoding_args.c_dist = .025
     encoding_args.rs = 2
-    encoding_args.alpha = .1
+    encoding_args.alpha = .15
     encoding_args.stop = None
     encoding_args.out = output_file_name
     encoding_args.plate_info = "plate"
@@ -76,6 +76,7 @@ for file_size in file_sizes:
     encoding_args.config_file = False
     encoding_args.output_format = "sequence_only"
     encoding_args.verbose = 1
+    encoding_args.ensure_decode_ability = False
 
     encoding_starting_time = time.time()
     encoding_info = encode.main(encoding_args)
