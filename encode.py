@@ -214,7 +214,7 @@ def main(args):
 
                 if p.is_done():
                     f.count_redundancy()
-            elif f.good >= num_seg:
+            elif total_strand >= num_seg:
                 f.count_redundancy()
 
             if d.seed in used_seeds:

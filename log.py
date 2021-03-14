@@ -17,6 +17,11 @@ def get_logger(verbose=None, logger_name=__name__):
         # if it is not set then default value is 0
         verbose = int(os.environ.get("seqNAM_verbose", "0"))
     logger = logging.getLogger(logger_name)
+    # Add only one handler.
+    # During simulation multiple decoding is done at a single time.
+    # so it adds multiple logger
+    if len(logger.handlers) > 0:
+        return logger
     stream_handler = logging.StreamHandler(sys.stdout)
     if verbose == 1:
         stream_handler.setLevel(logging.DEBUG)
@@ -32,6 +37,7 @@ def get_logger(verbose=None, logger_name=__name__):
         logger.setLevel(logging.ERROR)
 
     stream_handler.setFormatter(logging.Formatter('%(levelname)s:%(name)s:%(message)s'))
+
     logger.addHandler(stream_handler)
 
     return logger

@@ -128,8 +128,6 @@ def main(args=None):
                     dna = str(row.seq)
                 # Remove the primer
                 dna = dna[args.primer_length: -args.primer_length] if args.primer_length else dna
-                if len(dna) == 300:
-                    print(dna)
             except KeyError:
                 logger.info("The file Format isn't correct")
                 return -1

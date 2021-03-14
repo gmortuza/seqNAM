@@ -45,7 +45,7 @@ after_decode_file_name = output_file_name + '-decoded'
 
 # Generate the random file
 # Looping through the file
-file_sizes = range(1024 * 1024, 51200 * 1024, 1024 * 1024)
+file_sizes = range(512 * 1024, 51200 * 1024, 1024 * 1024)
 # file_sizes = [10*1024*1024*1024]
 
 for file_size in file_sizes:
@@ -57,7 +57,7 @@ for file_size in file_sizes:
                                'file_in size map delta c_dist rs stop alpha out config_file job_id plate_info '
                                'plate_cells strand_name fwd_primer bwd_primer maximum_gc minimum_gc seed_size verbose')
     encoding_args.file_in = testing_file_name
-    encoding_args.size = 32
+    encoding_args.size = 16
     encoding_args.map = 'original_map.txt'
     encoding_args.delta = .001
     encoding_args.c_dist = .025
@@ -75,8 +75,12 @@ for file_size in file_sizes:
     encoding_args.seed_size = 4
     encoding_args.config_file = False
     encoding_args.output_format = "sequence_only"
+<<<<<<< HEAD
     encoding_args.verbose = 1
     encoding_args.ensure_decode_ability = False
+=======
+    encoding_args.verbose = 0
+>>>>>>> 079ef0053cac870b2f593d0f1763a4d7b3a9dc7b
 
     encoding_starting_time = time.time()
     encoding_info = encode.main(encoding_args)
@@ -112,9 +116,9 @@ for file_size in file_sizes:
         output_args.no_correction = False
         output_args.file_in = degraded_file_name
         output_args.out = after_decode_file_name
-        output_args.verbose = 1
+        output_args.verbose = 0
 
-        output_args.size = 32
+        output_args.size = 16
         output_args.map = 'original_map.txt'
         output_args.delta = .001
         output_args.c_dist = .025
