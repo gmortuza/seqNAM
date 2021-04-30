@@ -75,7 +75,7 @@ for file_size in file_sizes:
     encoding_args.seed_size = 4
     encoding_args.config_file = False
     encoding_args.output_format = "sequence_only"
-    encoding_args.verbose = 1
+    encoding_args.verbose = 0
     encoding_args.ensure_decode_ability = False
 
     encoding_starting_time = time.time()
@@ -112,7 +112,7 @@ for file_size in file_sizes:
         output_args.no_correction = False
         output_args.file_in = degraded_file_name
         output_args.out = after_decode_file_name
-        output_args.verbose = 1
+        output_args.verbose = 0
 
         output_args.size = 32
         output_args.map = 'original_map.txt'
